@@ -23,6 +23,8 @@
 // Put your libraries here (#include ...)
 
 #include <WaspSensorEvent_v30.h>
+#include <WaspXBee802.h>
+#include <WaspFrame.h>
 
 float temp;
 float humd;
@@ -35,6 +37,7 @@ int z_acc;
 int battery_level;
 pirSensorClass pir(SOCKET_1);
 uint8_t pirvalue;
+
 
 void setup() 
 {
@@ -70,6 +73,7 @@ void loop()
   z_acc = ACC.getZ();
   //Battery Level
   battery_level = PWR.getBatteryLevel();
+  Utils.blinkGreenLED(200, 5);
   ///////////////////////////////////////
   // 2. Print  Values
   ///////////////////////////////////////
