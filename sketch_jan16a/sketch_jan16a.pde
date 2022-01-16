@@ -33,6 +33,8 @@ int x_acc;
 int y_acc;
 int z_acc;
 int battery_level;
+pirSensorClass pir(SOCKET_1);
+uint8_t pirvalue;
 
 void setup() 
 {
@@ -40,6 +42,7 @@ void setup()
   USB.ON();
   USB.println(F("Start program"));
   ACC.ON();
+  ACC.setFF();
   
   
 }
@@ -96,5 +99,31 @@ void loop()
 
   // Every 3 seconds
   delay(3000);
+
+  // FF interruption 
+  
+  if( intFlag & ACC_INT )
+  {
+    // clear interruption flag
+    intFlag &= ~(ACC_INT);
+    USB.println(F("++++++++++++++++++++++++++++"));
+    USB.println(F("++ ACC interrupt detected ++"));
+    USB.println(F("++++++++++++++++++++++++++++")); 
+    USB.println(); 
+  }
+
+  //PIR detection 
+  pirvalue = pir.readPirSensor();
+  
+  // Print the info
+  if (pirvalue == 1) 
+  {
+    USB.println(F("Sensor output: Presence detected"));
+  } 
+  else 
+  {
+    USB.println(F("Sensor output: Presence not detected"));
+  }
+
 
 }
