@@ -1,3 +1,4 @@
+
 /*
     ------ Waspmote Pro Code Example --------
 
@@ -25,13 +26,15 @@
 #include <WaspXBee802.h>
 #include <WaspFrame.h>
 
+
 char RX_ADDRESS[] = "0013A200416BE350";
 char WASPMOTE_ID[] = "node_01";
 //Global Variables
 uint8_t status;
-int x_acc;
-int y_acc;
-int z_acc;
+int batL;
+int accX;
+int accY;
+int accZ;
 char message[100];
 float temp;
 float humd;
@@ -44,8 +47,6 @@ void setup()
 {
   // Setup for Serial port over USB
   USB.ON();
-  // Powers RTC up, init I2C bus and read initial values
-  // Setup for Serial port over USB
   ACC.ON();
   ACC.setFF(); 
   // Powers RTC up, init I2C bus and read initial values
@@ -59,6 +60,14 @@ void setup()
   xbee802.ON();
   // store Waspmote identifier in EEPROM memory
   frame.setID( WASPMOTE_ID );
+  pirvalue = pir.readPirSensor();
+  USB.println();
+  //Wait for PIR stabilization
+  while (pirvalue == 1){
+    USB.println(F("...wait for PIR stabilization"));
+    delay(1000);
+    pirvalue = pir.readPirSensor();    
+  } 
 
 
 }
@@ -76,7 +85,7 @@ void loop()
     
     // print info
     // create new frame
-    snprintf(message,sizeof(message),"#ALARM_PD");
+    snprintf(message,sizeof(message),"#:#ALARM_FF:ALARM_FF");
      ///////////////////////////////////////////
     // 2. Send packet
     ///////////////////////////////////////////  
@@ -97,6 +106,7 @@ void loop()
     Utils.setLED(LED0, LED_OFF);
     
   }
+  
   //Check if interrupt is RTC
   if( intFlag & RTC_INT )
   {
@@ -117,14 +127,18 @@ void loop()
     dtostrf(humd, 2, 1, hum_str);
     char pres_str[10];
     dtostrf(pres, 1, 1, pres_str);
+    accX = ACC.getX();
+    accY = ACC.getY();
+    accZ = ACC.getZ();
+    batL = PWR.getBatteryLevel();
 
-    snprintf(message,sizeof(message),"#:#X:%d#Y:%d#Z:%d#T:%s#H:%s#P:%s#B:%d",
-         ACC.getX(), ACC.getX(), ACC.getX(), tmp_str, hum_str, pres_str,PWR.getBatteryLevel());
+    printSensorValues();
     
-     ///////////////////////////////////////////
-    // 2. Send packet
-    ///////////////////////////////////////////  
-    // send XBee packet
+    snprintf(message,sizeof(message),"#:#X:%d#Y:%d#Z:%d#T:%s#H:%s#P:%s#B:%d",
+         accX, accY, accY, tmp_str, hum_str, pres_str,PWR.getBatteryLevel());
+
+    // Send packet
+    
     error = xbee802.send( RX_ADDRESS, message);   
     // check TX flag
     if( error == 0 )
@@ -139,18 +153,78 @@ void loop()
     Utils.setLED(LED1, LED_OFF);
    
   }    
+
+  if(intFlag & SENS_INT){
+    
+    Events.detachInt();   // Disable interruptions from the board
+    Events.loadInt();     // Load the interruption flag  
+    
+    if (pir.getInt()){    // In case the interruption came from PIR
+      USB.println(F("-----------------------------"));
+      USB.println(F("Interruption from PIR"));
+      USB.println(F("-----------------------------"));
+      USB.println();
+      snprintf(message,sizeof(message),"#:#ALARM_PIR:ALARM_PIR");
+      error = xbee802.send( RX_ADDRESS, message);   
+    
+      // check TX flag
+      if( error == 0 )
+      {
+        USB.println(F("send ok"));
+      }
+      else 
+      {
+        USB.println(F("send error"));
+      }
+      
+           
+    }
+
+    pirvalue = pir.readPirSensor();
+    USB.println();
+    while (pirvalue == 1){
+      USB.println(F("...wait for PIR stabilization"));
+      delay(1000);
+      pirvalue = pir.readPirSensor();    
+    }   
+    intFlag &= ~(SENS_INT);// Clean the interruption flag
+    
+    Events.attachInt(); // Enable interruptions from the board
+  }
+    
+
   
-   ///////////////////////////////////////////////////////////////////////
-  // 6. Clear interruption pin   
-  ///////////////////////////////////////////////////////////////////////
-  // This function is used to make sure the interruption pin is cleared
-  // if a non-captured interruption has been produced
+   
+  //  Clear interruption pin   
+  
   PWR.clearInterruptionPin();
    
 
  
 }
-
+void printSensorValues(void){
+  USB.println("\n-----------------------------");
+  USB.print("Battery Level: ");
+  USB.printFloat(batL, 2);
+  USB.println(F(" %"));
+  USB.print("Pressure: ");
+  USB.printFloat(pres, 2);
+  USB.println(F(" Pa"));
+  USB.print("Temperature: ");
+  USB.printFloat(temp, 2);
+  USB.println(F(" Celsius"));
+  USB.print("Humidity: ");
+  USB.printFloat(humd, 1); 
+  USB.println(F(" %"));  
+  USB.println(F(" \t0X\t0Y\t0Z")); 
+  USB.print(F(" ACC\t")); 
+  USB.print(accX, DEC);
+  USB.print(F("\t")); 
+  USB.print(accY, DEC);
+  USB.print(F("\t")); 
+  USB.println(accZ, DEC);
+  USB.println("-----------------------------\n");
+ }
   
 
 
