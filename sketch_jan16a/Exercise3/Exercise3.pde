@@ -192,9 +192,6 @@ void loop()
     Events.attachInt(); // Enable interruptions from the board
   }
     
-
-  
-   
   //  Clear interruption pin   
   
   PWR.clearInterruptionPin();
