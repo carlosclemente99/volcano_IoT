@@ -54,11 +54,9 @@ int x_acc;
 int y_acc;
 int z_acc;
 uint8_t bat;
-// define variable
 uint8_t error;
 char filename[100];
 uint8_t socket = SOCKET1;
-//pirSensorClass pir(SOCKET_1);
 uint16_t socket_handle = 0;
 char HOST[]        = "mqtt.thingspeak.com"; //MQTT Broker
 char REMOTE_PORT[] = "1883";  //MQTT
@@ -67,6 +65,27 @@ char LOCAL_PORT[]  = "3000";
 char SENSORS_CHANNEL[] = "1644029";
 char SENSORS_API_KEY[] = "2CSSVGPQ7AUXUP8L";
 
+// Battery is low if its level is lower or equal than LOW_BATTERY
+#define LOW_BATTERY 20
+
+// Sensor values received from the end node will be stored into an array.
+// To avoid confussion with the positions, they are saved in constants
+#define POS_ALARM    0
+#define POS_TEMP     1
+#define POS_HUM      2
+#define POS_BAT      3
+#define POS_PRES     4
+#define POS_ACCX     5
+#define POS_ACCY     6
+#define POS_ACCZ     7
+#define NUM_MEASURES 8
+
+// Alarm codes
+#define NO_ALARM     "-1"
+#define ALARM_FF     "0"
+#define ALARM_PIR    "1"
+#define ALARM_BAT    "2"
+
 bool connectWifi()
 {
   uint8_t status;
@@ -74,8 +93,8 @@ bool connectWifi()
   // 1. Switch ON
   //////////////////////////////////////////////////
   WIFI_PRO.softReset();
-  WIFI_PRO.setESSID("ONO6159-5G");
-  WIFI_PRO.setPassword(WPA2, "");
+  WIFI_PRO.setESSID("iPhone de Paulo");
+  WIFI_PRO.setPassword(WPA2, "bolundejo99");
   error = WIFI_PRO.ON(socket);
 
   if ( error == 0 )
@@ -100,7 +119,7 @@ bool connectWifi()
     // get IP address
     error = WIFI_PRO.getIP();
 
-    if (error == 0)
+    if (error == 0) // No error ocurred while getting IP
     {
       USB.print(F("IP address: "));
       USB.println( WIFI_PRO._ip );
@@ -192,66 +211,91 @@ void sendData(unsigned char* payload)
     USB.println(F("3.2. Error calling 'send' function"));
     WIFI_PRO.printErrorCode();
   }
+   WIFI_PRO.closeSocket();
 }
 
-void buildPayload(char* input_buffer, unsigned char* payload) {
-     token = strtok(buffer_aux, "#"); //strtok MODIFIES THE STRING PASSED TO PARSE (string constant) !!!! So constant has to be new everytime (local variable)
+// Tokenizes a string with the format ##X:-6#Y:-90#Z:1042#T:25.5#H:44.4#P:1883.5#B:98
+// Stores values into array. Returns true if array contains alarm code, false if it contains sensor values
+boolean parseInput(char* input_buffer, char* values[]) {
+       token = strtok(buffer_aux, "#"); //strtok MODIFIES THE STRING PASSED TO PARSE (string constant) !!!! So constant has to be new everytime (local variable)
     // loop through the string to extract all other tokens
     boolean alarmReceived = false;
     USB.println(token);
     while ( token != NULL ) {
       token = strtok(NULL, ":");
-      //##X:-6#Y:-90#Z:1042#T:25.5#H:44.4#P:1883.5#B:98
       if ( !strcmp("X", token) ) {
         token = strtok(NULL, "#");
-        tx_accX = token;
+        values[POS_ACCX] = token;
       }
       else if ( !strcmp("Y", token) ) {
         token = strtok(NULL, "#");
-        tx_accY = token;
+        values[POS_ACCY] = token;
       }
       else if ( !strcmp("Z", token) ) {
         token = strtok(NULL, "#");
-        tx_accZ = token;
+        values[POS_ACCZ] = token;
       }
       else if ( !strcmp("T", token) ) {
         token = strtok(NULL, "#");
-        tx_temp = token;
+        values[POS_TEMP] = token;
       }
       else if ( !strcmp("H", token) ) {
         token = strtok(NULL, "#");
-        tx_hum = token;
+        values[POS_HUM] = token;
       }
       else if ( !strcmp("P", token) ) {
         token = strtok(NULL, "#");
-        tx_press = token;
+        values[POS_PRES] = token;
       }
       else if ( !strcmp("B", token) ) {
         token = strtok(NULL, "#");
-        strcpy( tx_bat, (const char*)token );
+        values[POS_BAT] = token;
       }
       else if ( !strcmp("ALARM_FF", token) ) {
         token = strtok(NULL, "#");
-        snprintf((char *)payload, 300, "field8=%s", "0"); // 0 = Freefall detected
+        values[POS_ALARM] = ALARM_FF;
         alarmReceived = true;
-        break; // Do not continue parseing if alarm received
       }
       else if ( !strcmp("ALARM_PIR", token) ) {
         token = strtok(NULL, "#");
-        snprintf((char *)payload, 300, "field8=%s", "1"); // 1 = PIR detected
+        values[POS_ALARM] = ALARM_PIR;
         alarmReceived = true;
-        break; // Do not continue parseing if alarm received
       }
     }
-    // If an alarm has been received, payload is already built only with the alarm code (no sensor data is sent)
-    if (!alarmReceived) {
-      snprintf((char *)payload, 300, "field1=%s&field2=%s&field3=%s&field4=%s&field5=%s&field6=%s&field7=%s",
-             tx_temp, tx_hum, tx_press, tx_accX, tx_accY, tx_accZ, &tx_bat);
-      printSensorValues();
-    }
+    return alarmReceived;
 }
+
+void buildPayload(char* values[], unsigned char* payload) {
+    snprintf(
+      (char *)payload, 
+       300, 
+      "field1=%s&field2=%s&field3=%s&field4=%s&field5=%s&field6=%s&field7=%s",
+       values[POS_TEMP], 
+       values[POS_HUM],
+       values[POS_PRES],
+       values[POS_ACCX], 
+       values[POS_ACCY], 
+       values[POS_ACCZ], 
+       values[POS_BAT]
+    );
+}
+
+void buildAlarmPayload(char* alarmCode, unsigned char* payload) {
+  snprintf(
+    (char*)payload,
+    100,
+    "field8=%s",
+    alarmCode
+  );
+}
+
+
+/*void printSensorValues(char* temp, char* hum, char* pres, char* accX, char* accY, char* accZ, char* bat) {
+  
+}*/
+
 void printSensorValues(void){
-  USB.println("\n--------------OWN VALUES---------------");
+  USB.println("\n--------------GATEWAY VALUES---------------");
   USB.print("Battery Level: ");
   USB.print(PWR.getBatteryLevel(), DEC);
   USB.println(F(" %"));
@@ -296,13 +340,29 @@ void loop()
     // #:#X:%d#Y:%d#Z:%d#T:%s#H:%s#P:%s#B:%d
     memset( buffer_aux, 0, sizeof(buffer_aux) ); // Reset buffer
     strcpy( buffer_aux, (const char*)xbee802._payload );
-    unsigned char payload[300];
-    buildPayload(buffer_aux, payload);
+    unsigned char payload[300]; // Payload to be transmitted
+    char* sensorValues[NUM_MEASURES];
+    boolean alarmReceived = parseInput(buffer_aux, sensorValues); // Parse buffer_aux and set sensor values into array
+    if (!alarmReceived) {
+      buildPayload(sensorValues, payload);
+      printSensorValues();
+    } else {
+      buildAlarmPayload(sensorValues[POS_ALARM], payload);
+    }
+    
     USB.printf("Payload to be sent: %s\n", payload);
     // ToDo: if current battery level is low, create an string with the format ##ALARM_BL#
     if (WIFI_PRO.isConnected()) // No error ocurred during connection
     {
       sendData(payload);
+      if (atoi(sensorValues[POS_BAT]) <= LOW_BATTERY) {
+        unsigned char alarmPayload[100];
+        USB.println("Edge node battery is low, sending alert to ThingSpeak");
+        buildAlarmPayload(ALARM_BAT, alarmPayload);
+        USB.printf("Alarm payload %s\n", alarmPayload);
+        sendData(alarmPayload);
+      }
+      
     } else {
       printf("Wifi is not connected");
     }
