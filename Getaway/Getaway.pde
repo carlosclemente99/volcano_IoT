@@ -24,8 +24,8 @@
 #define REMOTE_PORT       "1883"  //MQTT
 #define LOCAL_PORT        "3000"
 
-#define SENSORS_CHANNEL   "1644029"
-#define SENSORS_API_KEY   "2CSSVGPQ7AUXUP8L"
+#define SENSORS_TOPIC      "channels/1644029/publish/2CSSVGPQ7AUXUP8L"
+#define GATEWAY_TOPIC      "channels/1650435/publish/O1WYCTPXZQVS8NWA"
 
 // Battery is low if its level is lower or equal than LOW_BATTERY
 #define LOW_BATTERY 20
@@ -123,7 +123,7 @@ void setup()
 
 }
 
-void sendData(unsigned char* payload)
+void sendData(unsigned char* payload, char* topic)
 {
   unsigned char buffer_ts[300];
   strcpy( (char *)buffer_ts, (char *)payload);
@@ -154,7 +154,7 @@ void sendData(unsigned char* payload)
   int len = MQTTSerialize_connect(buffer_ts, buflen, &data); /* 1 */
 
   // Topic and message
-  topicString.cstring = (char *)"channels/1644029/publish/2CSSVGPQ7AUXUP8L";
+  topicString.cstring = topic;
   int payloadlen = strlen((const char*)payload);
 
   len += MQTTSerialize_publish(buffer_ts + len, buflen - len, 0, 0, 0, 0, topicString, payload, payloadlen); /* 2 */
@@ -267,22 +267,6 @@ void printSensorValues(char* sensorValues[]) {
   USB.println("---------");
 }
 
-void gatherOwnSensorValues(char* sensorValues[]) {
-  char temp[10];
-  char hum[10];
-  dtostrf(Events.getHumidity(), 2, 1, hum);
-  dtostrf(Events.getTemperature(), 2, 1, temp);
- /* dtostrf(Events.getPressure(), 1, 1, sensorValues[POS_PRES]);*/
-  strcpy(sensorValues[POS_HUM], hum);
-  strcpy(sensorValues[POS_TEMP], temp);
-  USB.printf("UUUUU %s\n", sensorValues[POS_TEMP]);
-  USB.printf("MMMMMM %s\n", sensorValues[POS_HUM]);
-  /*snprintf(sensorValues[POS_ACCX], 10, "%d", ACC.getX());
-  snprintf(sensorValues[POS_ACCY], 10, "%d", ACC.getY());
-  snprintf(sensorValues[POS_ACCZ], 10, "%d", ACC.getZ());
-  snprintf(sensorValues[POS_BAT], 10, "%d", PWR.getBatteryLevel())*/;
-}
-
 void receiveAndPublishEndNodeValues() {
   char buffer_in[100];
   unsigned char payload[300]; // Payload to be transmitted
@@ -312,13 +296,13 @@ void receiveAndPublishEndNodeValues() {
     USB.printf("Payload to be sent: %s\n", payload);
     if (WIFI_PRO.isConnected()) // No error ocurred during connection
     {
-      sendData(payload);
+      sendData(payload, SENSORS_TOPIC);
       // If an alarm was received, sensorVales[POS_BAT] will be set to 0
       if (!alarmReceived && atoi(sensorValues[POS_BAT]) <= LOW_BATTERY) {
         unsigned char alarmPayload[100];
         USB.println("Edge node battery is low, sending alert to ThingSpeak");
         buildAlarmPayload(ALARM_BAT, alarmPayload);
-        sendData(alarmPayload);
+        sendData(alarmPayload, SENSORS_TOPIC);
       }
       
     } else {
@@ -342,18 +326,43 @@ void receiveAndPublishEndNodeValues() {
   }
 }
 
-void gatherAndPublishGatewayValues() {
-  char currentSensorValues[NUM_MEASURES][10];
+void gatherAndPublishCurrentValues() {
+  // Current gateway sensor values
+  char* currentValues[NUM_MEASURES];
+  unsigned char payload[300];
+  char currentTemp[10];
+  char currentHum[10];
+  char currentPres[10];
+  char currentAccX[10];
+  char currentAccY[10];
+  char currentAccZ[10];
+  char currentBat[10];
+  
+  dtostrf(Events.getTemperature(), 2, 1, currentTemp);
+  currentValues[POS_TEMP] = currentTemp;
+  dtostrf(Events.getHumidity(), 2, 1, currentHum);
+  currentValues[POS_HUM] = currentHum;
+  dtostrf(Events.getPressure(), 1, 1, currentPres);
+  currentValues[POS_PRES] = currentPres;
+  snprintf(currentAccX, 10, "%d", ACC.getX());
+  currentValues[POS_ACCX] = currentAccX;
+  snprintf(currentAccY, 10, "%d", ACC.getY());
+  currentValues[POS_ACCY] = currentAccY;
+  snprintf(currentAccZ, 10, "%d", ACC.getZ());
+  currentValues[POS_ACCZ] = currentAccZ;
+  snprintf(currentBat, 10, "%d", PWR.getBatteryLevel());
+  currentValues[POS_BAT] = currentBat;
+  USB.println("CURRENT GATEWAY SENSOR VALUES");
+  printSensorValues(currentValues);
 
-  gatherOwnSensorValues(currentSensorValues);
-  USB.println("Own sensor values:");
-  printSensorValues(currentSensorValues);
+  buildPayload(currentValues, payload);
+  sendData(payload, GATEWAY_TOPIC);
 }
 
 void loop()
 {
   receiveAndPublishEndNodeValues();
-  //gatherAndPublishGatewayValues();
+  gatherAndPublishCurrentValues();
 }
 
 
