@@ -1,28 +1,9 @@
 /*
-    ------ [802_03] - receive XBee packets --------
+    Gateway code
 
-    Explanation: This program shows how to receive packets with
-    XBee-802.15.4 modules.
-
-    Copyright (C) 2016 Libelium Comunicaciones Distribuidas S.L.
-    http://www.libelium.com
-
-    This program is free software: you can redistribute it and/or modify
-    it under the terms of the GNU General Public License as published by
-    the Free Software Foundation, either version 3 of the License, or
-    (at your option) any later version.
-
-    This program is distributed in the hope that it will be useful,
-    but WITHOUT ANY WARRANTY; without even the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-    GNU General Public License for more details.
-
-    You should have received a copy of the GNU General Public License
-    along with this program.  If not, see <http://www.gnu.org/licenses/>.
-
-    Version:           3.0
-    Design:            David Gascón
-    Implementation:    Yuri Carmona
+    GROUP 8
+    Carlos Clemente Martín (carlos.clemente.martin@alumnos.upm.es)
+    Paulo Seoane Davila (p.seoane@alumnos.upm.es@alumnos.upm.es)
 */
 
 #include <WaspXBee802.h>
@@ -39,31 +20,12 @@
 #include <MQTTSubscribe.h>
 #include <MQTTUnsubscribe.h>
 
-char *token, *aux;
-unsigned char buffer_ts[300];
-char buffer_aux[100];
-char *tx_accX, *tx_accY, *tx_accZ, *tx_temp, *tx_hum,
-     *tx_press, tx_bat[10] = "100";
+#define HOST              "mqtt.thingspeak.com" //MQTT Broker
+#define REMOTE_PORT       "1883"  //MQTT
+#define LOCAL_PORT        "3000"
 
-
-float temp;
-float humd;
-float pres;
-
-int x_acc;
-int y_acc;
-int z_acc;
-uint8_t bat;
-uint8_t error;
-char filename[100];
-uint8_t socket = SOCKET1;
-uint16_t socket_handle = 0;
-char HOST[]        = "mqtt.thingspeak.com"; //MQTT Broker
-char REMOTE_PORT[] = "1883";  //MQTT
-char LOCAL_PORT[]  = "3000";
-
-char SENSORS_CHANNEL[] = "1644029";
-char SENSORS_API_KEY[] = "2CSSVGPQ7AUXUP8L";
+#define SENSORS_CHANNEL   "1644029"
+#define SENSORS_API_KEY   "2CSSVGPQ7AUXUP8L"
 
 // Battery is low if its level is lower or equal than LOW_BATTERY
 #define LOW_BATTERY 20
@@ -85,6 +47,10 @@ char SENSORS_API_KEY[] = "2CSSVGPQ7AUXUP8L";
 #define ALARM_FF     "0"
 #define ALARM_PIR    "1"
 #define ALARM_BAT    "2"
+
+uint8_t error;
+uint8_t socket = SOCKET1;
+uint16_t socket_handle = 0;
 
 bool connectWifi()
 {
@@ -151,7 +117,7 @@ void setup()
   Events.attachInt();
   ACC.ON();
 
-  // init XBee
+ // init XBee;
   xbee802.ON();
   connectWifi();
 
@@ -159,7 +125,7 @@ void setup()
 
 void sendData(unsigned char* payload)
 {
-  memset( buffer_ts, 0, sizeof(buffer_ts) );
+  unsigned char buffer_ts[300];
   strcpy( (char *)buffer_ts, (char *)payload);
   /// Publish MQTT
   error = WIFI_PRO.setTCPclient( HOST, REMOTE_PORT, LOCAL_PORT);
@@ -217,7 +183,8 @@ void sendData(unsigned char* payload)
 // Tokenizes a string with the format ##X:-6#Y:-90#Z:1042#T:25.5#H:44.4#P:1883.5#B:98
 // Stores values into array. Returns true if array contains alarm code, false if it contains sensor values
 boolean parseInput(char* input_buffer, char* values[]) {
-       token = strtok(buffer_aux, "#"); //strtok MODIFIES THE STRING PASSED TO PARSE (string constant) !!!! So constant has to be new everytime (local variable)
+    char *token, *aux;
+    token = strtok(input_buffer, "#"); //strtok MODIFIES THE STRING PASSED TO PARSE (string constant) !!!! So constant has to be new everytime (local variable)
     // loop through the string to extract all other tokens
     boolean alarmReceived = false;
     USB.println(token);
@@ -289,42 +256,38 @@ void buildAlarmPayload(char* alarmCode, unsigned char* payload) {
   );
 }
 
+void printSensorValues(char* sensorValues[]) {
+  USB.printf("Battery level: %s\n", sensorValues[POS_BAT]);
+  USB.printf("Temperature: %s Celsius\n", sensorValues[POS_TEMP]);
+  USB.printf("Pressure: %s Pa\n", sensorValues[POS_PRES]);
+  USB.printf("Humidity: %s\n", sensorValues[POS_HUM]);
+  USB.printf("X Axis acceleration: %s\n", sensorValues[POS_ACCX]);
+  USB.printf("Y Axis acceleration: %s\n", sensorValues[POS_ACCY]);
+  USB.printf("Z Axis acceleration: %s\n", sensorValues[POS_ACCZ]);
+  USB.println("---------");
+}
 
-/*void printSensorValues(char* temp, char* hum, char* pres, char* accX, char* accY, char* accZ, char* bat) {
-  
-}*/
+void gatherOwnSensorValues(char* sensorValues[]) {
+  char temp[10];
+  char hum[10];
+  dtostrf(Events.getHumidity(), 2, 1, hum);
+  dtostrf(Events.getTemperature(), 2, 1, temp);
+ /* dtostrf(Events.getPressure(), 1, 1, sensorValues[POS_PRES]);*/
+  strcpy(sensorValues[POS_HUM], hum);
+  strcpy(sensorValues[POS_TEMP], temp);
+  USB.printf("UUUUU %s\n", sensorValues[POS_TEMP]);
+  USB.printf("MMMMMM %s\n", sensorValues[POS_HUM]);
+  /*snprintf(sensorValues[POS_ACCX], 10, "%d", ACC.getX());
+  snprintf(sensorValues[POS_ACCY], 10, "%d", ACC.getY());
+  snprintf(sensorValues[POS_ACCZ], 10, "%d", ACC.getZ());
+  snprintf(sensorValues[POS_BAT], 10, "%d", PWR.getBatteryLevel())*/;
+}
 
-void printSensorValues(void){
-  USB.println("\n--------------GATEWAY VALUES---------------");
-  USB.print("Battery Level: ");
-  USB.print(PWR.getBatteryLevel(), DEC);
-  USB.println(F(" %"));
-  USB.print("Pressure: ");
-  USB.printFloat(Events.getPressure(), 2);
-  USB.println(F(" Pa"));
-  USB.print("Temperature: ");
-  USB.printFloat(Events.getTemperature(), 2);
-  USB.println(F(" Celsius"));
-  USB.print("Humidity: ");
-  USB.printFloat(Events.getHumidity(), 1); 
-  USB.println(F(" %"));  
-  USB.println(F(" \t0X\t0Y\t0Z")); 
-  USB.print(F(" ACC\t")); 
-  USB.print(ACC.getX(), DEC);
-  USB.print(F("\t")); 
-  USB.print(ACC.getY(), DEC);
-  USB.print(F("\t")); 
-  USB.println(ACC.getZ(), DEC);
-  USB.println("-----------------------------\n");
-  USB.println("\n--------------EDGE NODE VALUES---------------");
-  USB.printf( "Temperature =%s&Humidity=%s&Pressure=%s&Acc_X=%s&Acc_Y=%s&Acc_Z=%s&batLevel=%s",
-             tx_temp, tx_hum, tx_press, tx_accX, tx_accY, tx_accZ, &tx_bat);
-  USB.println("-----------------------------\n");
- }
-
-void loop()
-{
-  // receive XBee packet (wait for 10 seconds)
+void receiveAndPublishEndNodeValues() {
+  char buffer_in[100];
+  unsigned char payload[300]; // Payload to be transmitted
+  char* sensorValues[NUM_MEASURES];
+  // receive XBee packet (wait for 12 seconds)
   error = xbee802.receivePacketTimeout( 120000 );
 
   // check answer
@@ -332,34 +295,29 @@ void loop()
   {
     // Show data stored in '_payload' buffer indicated by '_length'
     USB.print(F("Data: "));
-    USB.println( xbee802._payload, xbee802._length);
-    // Show data stored in '_payload' buffer indicated by '_length'
-    USB.print(F("Length: "));
-    USB.println( xbee802._length, DEC);
+    USB.println(xbee802._payload, xbee802._length);
 
     // #:#X:%d#Y:%d#Z:%d#T:%s#H:%s#P:%s#B:%d
-    memset( buffer_aux, 0, sizeof(buffer_aux) ); // Reset buffer
-    strcpy( buffer_aux, (const char*)xbee802._payload );
-    unsigned char payload[300]; // Payload to be transmitted
-    char* sensorValues[NUM_MEASURES];
-    boolean alarmReceived = parseInput(buffer_aux, sensorValues); // Parse buffer_aux and set sensor values into array
+    strcpy(buffer_in, (const char*)xbee802._payload);
+
+    boolean alarmReceived = parseInput(buffer_in, sensorValues); // Parse buffer_aux and set sensor values into array
     if (!alarmReceived) {
       buildPayload(sensorValues, payload);
-      printSensorValues();
+      USB.println("END NODE SENSOR VALUES:");
+      printSensorValues(sensorValues);
     } else {
       buildAlarmPayload(sensorValues[POS_ALARM], payload);
     }
     
     USB.printf("Payload to be sent: %s\n", payload);
-    // ToDo: if current battery level is low, create an string with the format ##ALARM_BL#
     if (WIFI_PRO.isConnected()) // No error ocurred during connection
     {
       sendData(payload);
-      if (atoi(sensorValues[POS_BAT]) <= LOW_BATTERY) {
+      // If an alarm was received, sensorVales[POS_BAT] will be set to 0
+      if (!alarmReceived && atoi(sensorValues[POS_BAT]) <= LOW_BATTERY) {
         unsigned char alarmPayload[100];
         USB.println("Edge node battery is low, sending alert to ThingSpeak");
         buildAlarmPayload(ALARM_BAT, alarmPayload);
-        USB.printf("Alarm payload %s\n", alarmPayload);
         sendData(alarmPayload);
       }
       
@@ -382,9 +340,34 @@ void loop()
     USB.print(F("Error receiving a packet:"));
     USB.println(error, DEC);
   }
-
-
-
-
-
 }
+
+void gatherAndPublishGatewayValues() {
+  char currentSensorValues[NUM_MEASURES][10];
+
+  gatherOwnSensorValues(currentSensorValues);
+  USB.println("Own sensor values:");
+  printSensorValues(currentSensorValues);
+}
+
+void loop()
+{
+  receiveAndPublishEndNodeValues();
+  //gatherAndPublishGatewayValues();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
