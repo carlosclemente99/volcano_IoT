@@ -58,9 +58,6 @@ bool connectWifi()
   //////////////////////////////////////////////////
   // 1. Switch ON
   //////////////////////////////////////////////////
-  WIFI_PRO.softReset();
-  WIFI_PRO.setESSID("iPhone de Paulo");
-  WIFI_PRO.setPassword(WPA2, "bolundejo99");
   error = WIFI_PRO.ON(socket);
 
   if ( error == 0 )
